@@ -2,7 +2,7 @@
 
 I built this because every SAT prep tool I tried was either paywalled, generic, or just bad. I needed something that actually knew my weak spots and drilled me on them until I fixed them. So I built it myself.
 
-Target: 1240 → 1500 by August 22.
+Use this link to access Scorix: https://scorix-blond.vercel.app/
 
 ## What it does
 
