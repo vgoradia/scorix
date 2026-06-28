@@ -1,16 +1,36 @@
-# React + Vite
+# Scorix
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+I built this because every SAT prep tool I tried was either paywalled, generic, or just bad. I needed something that actually knew my weak spots and drilled me on them until I fixed them. So I built it myself.
 
-Currently, two official plugins are available:
+Target: 1240 → 1500 by August 22.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What it does
 
-## React Compiler
+Onboarding asks for your score, target, test date, and weak areas — then everything adapts to you. The dashboard shows your real numbers, not placeholders.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Practice mode generates unlimited SAT-style questions using Claude, calibrated to actual College Board difficulty. Every wrong answer gets saved and resurfaces automatically through spaced repetition until you stop getting it wrong.
 
-## Expanding the ESLint configuration
+There are 8 full-length practice tests in real SAT format — 98 questions, 2 hours 14 minutes, adaptive Module 2, and a 10-minute break timer between sections. After Math Module 2 you get a full score report with separate Math and R&W scores.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Everything tracks. Accuracy by topic, session history, streaks, time per question, mistake log with every wrong answer expandable.
+
+## Stack
+
+React, Vite, Claude API
+
+## Setup
+
+```bash
+npm install
+npm run dev
+```
+
+Add a `.env`:
+
+VITE_ANTHROPIC_API_KEY=your_key_here
+
+## SAT format
+
+98 questions across 4 modules. R&W Module 1 → R&W Module 2 → 10 min break → Math Module 1 → Math Module 2. Module 2 difficulty adapts based on how you did in Module 1. No calculator restriction — Desmos is available the whole time.
+
+Scoring: 200–800 per section, 400–1600 total.
