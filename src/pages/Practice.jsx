@@ -19,16 +19,39 @@ const TOPICS = {
 const DRILL_SIZES = [10, 20, 30]
 const DIFFICULTY_CYCLE = ['easy', 'medium', 'medium', 'hard', 'medium', 'easy', 'hard', 'medium', 'medium', 'hard']
 
-// Score estimator based on accuracy
+// Strip any leftover markdown/LaTeX artifacts from any text the model returns
+function cleanText(text) {
+  if (!text) return ''
+  return text
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/#{1,6}\s?/g, '')
+    .replace(/\$\$/g, '')
+    .replace(/\$/g, '')
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1 divided by $2')
+    .replace(/\\[a-zA-Z]+\{([^}]*)\}/g, '$1')
+    .replace(/\\[a-zA-Z]+/g, '')
+    .replace(/\{|\}/g, '')
+    .trim()
+}
+
+// Normalize a choice string into { letter, text } no matter how the model formatted it
+function parseChoice(raw) {
+  const cleaned = cleanText(raw)
+  const match = cleaned.match(/^([A-D])\)?\.?\s*(.*)$/s)
+  if (match) {
+    return { letter: match[1], text: match[2].trim() }
+  }
+  return { letter: '?', text: cleaned }
+}
+
 function estimateScore(stats) {
   if (stats.totalAnswered < 5) return null
   const acc = stats.totalCorrect / stats.totalAnswered
-  // Rough SAT score estimation: 400 baseline, scales to 1600
   const estimated = Math.round(400 + acc * 1200)
   return Math.min(1600, Math.max(400, estimated))
 }
 
-// Confetti component
 function Confetti({ active }) {
   if (!active) return null
   const pieces = Array.from({ length: 60 }, (_, i) => ({
@@ -55,6 +78,135 @@ function Confetti({ active }) {
           animation: `confetti-fall ${1.5 + Math.random()}s ease-in ${p.delay} forwards`,
         }} />
       ))}
+    </div>
+  )
+}
+
+// Desmos calculator embed
+function DesmosCalculator() {
+  const containerRef = useRef(null)
+  const calculatorRef = useRef(null)
+  const [loaded, setLoaded] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open || loaded) return
+    if (window.Desmos) {
+      initCalculator()
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://www.desmos.com/api/v1.12/calculator.js?apiKey=ad2d67a926eb452093608fe55aecfb29'
+    script.onload = initCalculator
+    document.body.appendChild(script)
+
+    function initCalculator() {
+      if (containerRef.current && !calculatorRef.current) {
+        calculatorRef.current = window.Desmos.GraphingCalculator(containerRef.current, {
+          keypad: true,
+          expressions: true,
+          settingsMenu: false,
+          zoomButtons: true,
+          border: false,
+        })
+        setLoaded(true)
+      }
+    }
+  }, [open])
+
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: open ? 'rgba(108,99,255,0.08)' : 'white',
+          border: `1px solid ${open ? 'var(--primary)' : 'var(--border)'}`,
+          borderRadius: 'var(--radius-sm)', padding: '8px 16px',
+          fontSize: '0.82rem', fontWeight: 600,
+          color: open ? 'var(--primary)' : 'var(--text-secondary)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+        }}
+      >
+        🧮 {open ? 'Hide Calculator' : 'Open Desmos Calculator'}
+      </button>
+      {open && (
+        <div style={{
+          marginTop: '10px', height: '380px', borderRadius: 'var(--radius-md)',
+          overflow: 'hidden', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
+        }}>
+          <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Feedback button — optional, only saves if used
+function FeedbackButton({ question, topic, section }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [sent, setSent] = useState(false)
+
+  function submit() {
+    if (!text.trim()) return
+    try {
+      const existing = JSON.parse(localStorage.getItem('scorix_feedback') || '[]')
+      existing.push({
+        text: text.trim(),
+        question: question?.slice(0, 200) || '',
+        topic, section,
+        date: new Date().toISOString(),
+      })
+      localStorage.setItem('scorix_feedback', JSON.stringify(existing.slice(-200)))
+    } catch {}
+    setSent(true)
+    setTimeout(() => { setOpen(false); setSent(false); setText('') }, 1500)
+  }
+
+  if (sent) {
+    return (
+      <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>✓ Feedback sent</span>
+    )
+  }
+
+  return (
+    <div>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={{
+          background: 'none', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)', padding: '6px 14px',
+          fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer',
+        }}>💬 Feedback</button>
+      ) : (
+        <div style={{
+          background: 'white', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-md)', padding: '12px', marginTop: '8px',
+          boxShadow: 'var(--shadow-sm)', maxWidth: '400px',
+        }}>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="What's wrong with this question?"
+            style={{
+              width: '100%', minHeight: '60px', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '8px', fontSize: '0.85rem',
+              fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+            <button onClick={submit} style={{
+              background: 'var(--primary)', color: 'white', border: 'none',
+              borderRadius: 'var(--radius-sm)', padding: '6px 16px',
+              fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            }}>Send</button>
+            <button onClick={() => { setOpen(false); setText('') }} style={{
+              background: 'none', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '6px 16px',
+              fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer',
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -183,6 +335,7 @@ function DrillSession({ section, topic, drillSize, onExit }) {
   const [finished, setFinished] = useState(false)
   const [questions, setQuestions] = useState([])
   const [loadingQuestion, setLoadingQuestion] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [results, setResults] = useState([])
   const [hint, setHint] = useState('')
   const [loadingHint, setLoadingHint] = useState(false)
@@ -193,7 +346,6 @@ function DrillSession({ section, topic, drillSize, onExit }) {
 
   useState(() => { generateQuestion(0, []) })
 
-  // Per-question timer
   useEffect(() => {
     setQuestionTime(0)
     timerRef.current = setInterval(() => {
@@ -214,6 +366,7 @@ function DrillSession({ section, topic, drillSize, onExit }) {
 
   async function generateQuestion(index, prevQuestions) {
     setLoadingQuestion(true)
+    setLoadError(false)
     setSelected(null)
     setSubmitted(false)
     setExplanation('')
@@ -239,11 +392,12 @@ function DrillSession({ section, topic, drillSize, onExit }) {
 
 STRICT RULES:
 - Match exact College Board question format and wording style
-- For Math: word problems, data interpretation, algebra, functions — no calculus, no topics beyond SAT scope
+- For Math: word problems, data interpretation, algebra, functions — no calculus, no topics beyond SAT scope. A Desmos graphing calculator is available, so questions can reference graphing where appropriate.
 - For Reading & Writing: include a short passage (25-100 words) from literature, history, science, or social studies followed by ONE focused question
 - Trap answers must reflect real mistakes students make
 - NEVER repeat a scenario already used in this session
-- No LaTeX, no special math symbols — write math in plain text
+- Choices must each start with "A) ", "B) ", "C) ", "D) " exactly, followed by the answer text
+- No LaTeX, no markdown, no dollar signs, no backslashes — write all math in plain text using words like "squared" and "divided by"
 
 Return ONLY valid JSON, no markdown, no backticks:
 {
@@ -265,12 +419,25 @@ Generate a completely different question scenario.`
       })
 
       const data = await response.json()
-      const text = data.content[0].text.replace(/```json|```/g, '').trim()
+      const rawText = data?.content?.[0]?.text
+      if (!rawText) throw new Error('Empty response')
+      const text = rawText.replace(/```json|```/g, '').trim()
       const q = JSON.parse(text)
+
+      // Validate shape before accepting
+      if (!q.question || !Array.isArray(q.choices) || q.choices.length < 2 || !q.correct) {
+        throw new Error('Malformed question')
+      }
+
+      q.question = cleanText(q.question)
+      q.passage = cleanText(q.passage)
+      q.choices = q.choices.map(cleanText)
+
       setQuestions(prev => [...prev, q])
       setLoadingQuestion(false)
     } catch (err) {
       console.error(err)
+      setLoadError(true)
       setLoadingQuestion(false)
     }
   }
@@ -301,7 +468,7 @@ Generate a completely different question scenario.`
         })
       })
       const data = await response.json()
-      setHint(data.content[0].text.replace(/\*\*/g, '').replace(/\*/g, ''))
+      setHint(cleanText(data.content[0].text))
     } catch {
       setHint('Could not load hint.')
     }
@@ -313,6 +480,7 @@ Generate a completely different question scenario.`
     setSubmitted(true)
     clearInterval(timerRef.current)
     const current = questions[questionIndex]
+    const correctLetter = parseChoice(current.choices.find(c => c.startsWith(current.correct.charAt(0))) || current.correct).letter || current.correct.charAt(0)
     const isCorrect = selected === current.correct.charAt(0)
 
     const newScore = { correct: score.correct + (isCorrect ? 1 : 0), total: score.total + 1 }
@@ -377,11 +545,7 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
         })
       })
       const data = await response.json()
-      setExplanation(data.content[0].text
-        .replace(/\*\*/g, '').replace(/\*/g, '')
-        .replace(/#{1,6} /g, '').replace(/\$\$/g, '').replace(/\$/g, '')
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1 divided by $2')
-        .replace(/\\[a-zA-Z]+/g, ''))
+      setExplanation(cleanText(data.content[0].text))
     } catch {
       setExplanation('Could not load explanation.')
     }
@@ -504,7 +668,6 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Per-question timer */}
             <span style={{
               fontSize: '0.85rem', fontWeight: 700,
               color: timeWarning ? 'var(--danger)' : 'var(--text-secondary)',
@@ -532,7 +695,22 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
           }} />
         </div>
 
-        {loadingQuestion ? (
+        {loadError ? (
+          <div style={{
+            textAlign: 'center', padding: '60px 40px',
+            background: 'white', borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
+          }}>
+            <p style={{ fontSize: '1.5rem', marginBottom: '12px' }}>⚠️</p>
+            <p style={{ fontWeight: 700, marginBottom: '8px', color: 'var(--text)' }}>Couldn't generate this question</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>This sometimes happens — let's try again.</p>
+            <button onClick={() => generateQuestion(questionIndex, questions)} style={{
+              background: 'var(--primary)', color: 'white', border: 'none',
+              borderRadius: 'var(--radius-md)', padding: '12px 28px',
+              fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer',
+            }}>Retry</button>
+          </div>
+        ) : loadingQuestion ? (
           <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-secondary)' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '12px' }}>⚡</div>
             Generating question...
@@ -551,6 +729,9 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
                 </div>
               )}
             </div>
+
+            {/* Desmos for math */}
+            {section === 'math' && <DesmosCalculator />}
 
             {current.passage && (
               <div style={{
@@ -572,8 +753,8 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
                 {current.question}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {current.choices.map((choice, i) => {
-                  const letter = choice.charAt(0)
+                {current.choices.map((choiceRaw, i) => {
+                  const { letter, text } = parseChoice(choiceRaw)
                   const isSelected = selected === letter
                   const isCorrect = submitted && letter === current.correct.charAt(0)
                   const isWrong = submitted && isSelected && !isCorrect
@@ -585,16 +766,24 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
                       textAlign: 'left', cursor: submitted ? 'default' : 'pointer',
                       fontSize: '0.9rem', color: 'var(--text)',
                       fontWeight: isSelected || isCorrect ? 600 : 400,
-                      transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px',
+                      transition: 'all 0.15s', display: 'flex', alignItems: 'flex-start', gap: '10px',
                     }}>
-                      {isCorrect && '✓ '}{isWrong && '✗ '}{choice}
+                      <span style={{
+                        flexShrink: 0, width: '22px', height: '22px', borderRadius: '50%',
+                        border: `2px solid ${isCorrect ? 'var(--accent)' : isWrong ? 'var(--danger)' : isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '0.72rem', fontWeight: 800,
+                        color: isCorrect ? 'var(--accent)' : isWrong ? 'var(--danger)' : isSelected ? 'var(--primary)' : 'var(--text-secondary)',
+                      }}>
+                        {isCorrect ? '✓' : isWrong ? '✗' : letter}
+                      </span>
+                      <span>{text}</span>
                     </button>
                   )
                 })}
               </div>
             </div>
 
-            {/* Hint */}
             {hint && (
               <div style={{
                 background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
@@ -606,7 +795,7 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
             )}
 
             {!submitted ? (
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button onClick={handleSubmit} disabled={!selected} style={{
                   background: selected ? 'var(--primary)' : 'var(--border)',
                   color: selected ? 'white' : 'var(--text-dim)',
@@ -628,6 +817,9 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
                 {hintUsed && !hint && (
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Hint used</span>
                 )}
+                <div style={{ marginLeft: 'auto' }}>
+                  <FeedbackButton question={current.question} topic={topic.label} section={section} />
+                </div>
               </div>
             ) : (
               <div>
@@ -648,19 +840,22 @@ Explain clearly why ${current.correct} is correct and how to solve it. If wrong,
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Loading explanation...</p>
                   ) : (
                     <div style={{ color: 'var(--text)', fontSize: '0.9rem', lineHeight: '1.8' }}>
-                      {explanation.split('\n').map((line, i) => (
+                      {explanation.split('\n').filter(Boolean).map((line, i) => (
                         <p key={i} style={{ marginBottom: '6px' }}>{line}</p>
                       ))}
                     </div>
                   )}
                 </div>
-                <button onClick={handleNext} style={{
-                  background: 'var(--primary)', color: 'white', border: 'none',
-                  borderRadius: 'var(--radius-md)', padding: '14px 36px',
-                  fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer',
-                }}>
-                  {score.total >= drillSize ? 'See Results →' : 'Next Question →'}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button onClick={handleNext} style={{
+                    background: 'var(--primary)', color: 'white', border: 'none',
+                    borderRadius: 'var(--radius-md)', padding: '14px 36px',
+                    fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    {score.total >= drillSize ? 'See Results →' : 'Next Question →'}
+                  </button>
+                  <FeedbackButton question={current.question} topic={topic.label} section={section} />
+                </div>
               </div>
             )}
           </div>
